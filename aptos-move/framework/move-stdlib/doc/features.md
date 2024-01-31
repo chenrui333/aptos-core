@@ -102,6 +102,8 @@ return true.
 -  [Function `max_object_nesting_check_enabled`](#0x1_features_max_object_nesting_check_enabled)
 -  [Function `get_keyless_accounts_with_passkeys_feature`](#0x1_features_get_keyless_accounts_with_passkeys_feature)
 -  [Function `keyless_accounts_with_passkeys_feature_enabled`](#0x1_features_keyless_accounts_with_passkeys_feature_enabled)
+-  [Function `get_transaction_context_extension_feature`](#0x1_features_get_transaction_context_extension_feature)
+-  [Function `transaction_context_extension_enabled`](#0x1_features_transaction_context_extension_enabled)
 -  [Function `change_feature_flags`](#0x1_features_change_feature_flags)
 -  [Function `change_feature_flags_for_next_epoch`](#0x1_features_change_feature_flags_for_next_epoch)
 -  [Function `on_new_epoch`](#0x1_features_on_new_epoch)
@@ -698,6 +700,16 @@ Lifetime: transient
 
 
 <pre><code><b>const</b> <a href="features.md#0x1_features_STRUCT_CONSTRUCTORS">STRUCT_CONSTRUCTORS</a>: u64 = 15;
+</code></pre>
+
+
+
+<a id="0x1_features_TRANSACTION_CONTEXT_EXTENSION"></a>
+
+Whether the transaction context extension is enabled.
+
+
+<pre><code><b>const</b> <a href="features.md#0x1_features_TRANSACTION_CONTEXT_EXTENSION">TRANSACTION_CONTEXT_EXTENSION</a>: u64 = 55;
 </code></pre>
 
 
@@ -2351,6 +2363,52 @@ Lifetime: transient
 
 <pre><code><b>public</b> <b>fun</b> <a href="features.md#0x1_features_keyless_accounts_with_passkeys_feature_enabled">keyless_accounts_with_passkeys_feature_enabled</a>(): bool <b>acquires</b> <a href="features.md#0x1_features_Features">Features</a> {
     <a href="features.md#0x1_features_is_enabled">is_enabled</a>(<a href="features.md#0x1_features_KEYLESS_ACCOUNTS_WITH_PASSKEYS">KEYLESS_ACCOUNTS_WITH_PASSKEYS</a>)
+}
+</code></pre>
+
+
+
+</details>
+
+<a id="0x1_features_get_transaction_context_extension_feature"></a>
+
+## Function `get_transaction_context_extension_feature`
+
+
+
+<pre><code><b>public</b> <b>fun</b> <a href="features.md#0x1_features_get_transaction_context_extension_feature">get_transaction_context_extension_feature</a>(): u64
+</code></pre>
+
+
+
+<details>
+<summary>Implementation</summary>
+
+
+<pre><code><b>public</b> <b>fun</b> <a href="features.md#0x1_features_get_transaction_context_extension_feature">get_transaction_context_extension_feature</a>(): u64 { <a href="features.md#0x1_features_TRANSACTION_CONTEXT_EXTENSION">TRANSACTION_CONTEXT_EXTENSION</a> }
+</code></pre>
+
+
+
+</details>
+
+<a id="0x1_features_transaction_context_extension_enabled"></a>
+
+## Function `transaction_context_extension_enabled`
+
+
+
+<pre><code><b>public</b> <b>fun</b> <a href="features.md#0x1_features_transaction_context_extension_enabled">transaction_context_extension_enabled</a>(): bool
+</code></pre>
+
+
+
+<details>
+<summary>Implementation</summary>
+
+
+<pre><code><b>public</b> <b>fun</b> <a href="features.md#0x1_features_transaction_context_extension_enabled">transaction_context_extension_enabled</a>(): bool <b>acquires</b> <a href="features.md#0x1_features_Features">Features</a> {
+    <a href="features.md#0x1_features_is_enabled">is_enabled</a>(<a href="features.md#0x1_features_TRANSACTION_CONTEXT_EXTENSION">TRANSACTION_CONTEXT_EXTENSION</a>)
 }
 </code></pre>
 

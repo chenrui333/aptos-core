@@ -428,6 +428,15 @@ module std::features {
         is_enabled(KEYLESS_ACCOUNTS_WITH_PASSKEYS)
     }
 
+    /// Whether the transaction context extension is enabled.
+    const TRANSACTION_CONTEXT_EXTENSION: u64 = 55;
+
+    public fun get_transaction_context_extension_feature(): u64 { TRANSACTION_CONTEXT_EXTENSION }
+
+    public fun transaction_context_extension_enabled(): bool acquires Features {
+        is_enabled(TRANSACTION_CONTEXT_EXTENSION)
+    }
+
     // ============================================================================================
     // Feature Flag Implementation
 
