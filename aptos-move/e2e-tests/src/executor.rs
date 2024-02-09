@@ -437,6 +437,7 @@ impl FakeExecutor {
                 .unwrap()],
                 vec![],
             )
+            .values
             .unwrap()
             .pop()
             .unwrap();
