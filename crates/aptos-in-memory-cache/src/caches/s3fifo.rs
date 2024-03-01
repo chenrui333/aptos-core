@@ -14,11 +14,12 @@ where
     L: Lifecycle<K, V> + Clone,
 {
     fn get(&self, key: &K) -> Option<V> {
-        S3FIFOCache::get(&self, key)
+        S3FIFOCache::get(self, key)
     }
 
     fn insert(&mut self, key: K, value: V) -> anyhow::Result<()> {
-        Ok(S3FIFOCache::insert(&self, key, value))
+        S3FIFOCache::insert(self, key, value);
+        Ok(())
     }
 }
 
