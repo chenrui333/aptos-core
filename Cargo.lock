@@ -2020,9 +2020,7 @@ version = "0.1.0"
 name = "aptos-in-memory-cache"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "quick_cache",
- "tokio",
 ]
 
 [[package]]

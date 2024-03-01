@@ -13,6 +13,4 @@ repository = { workspace = true }
 rust-version = { workspace = true }
 
 [dependencies]
-anyhow = { workspace = true}
 quick_cache = { workspace = true }
-tokio = { workspace = true }
