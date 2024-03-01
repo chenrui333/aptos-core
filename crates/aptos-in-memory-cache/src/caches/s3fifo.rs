@@ -17,9 +17,8 @@ where
         S3FIFOCache::get(self, key)
     }
 
-    fn insert(&mut self, key: K, value: V) -> anyhow::Result<()> {
+    fn insert(&mut self, key: K, value: V) {
         S3FIFOCache::insert(self, key, value);
-        Ok(())
     }
 }
 
@@ -35,7 +34,7 @@ mod tests {
     #[test]
     fn test_s3fifo_cache() {
         let mut cache: Box<dyn Cache<i32, i32>> = Box::new(get_s3fifo_cache());
-        cache.insert(1, 1).unwrap();
+        cache.insert(1, 1);
         assert_eq!(cache.get(&1), Some(1));
         assert_eq!(cache.get(&2), None);
     }

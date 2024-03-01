@@ -12,5 +12,5 @@ where
     V: Clone,
 {
     fn get(&self, key: &K) -> Option<V>;
-    fn insert(&mut self, key: K, value: V) -> anyhow::Result<()>;
+    fn insert(&mut self, key: K, value: V);
 }
