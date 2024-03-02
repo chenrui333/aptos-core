@@ -6,10 +6,10 @@ use std::hash::Hash;
 pub mod caches;
 
 /// A trait for a cache that can be used to store key-value pairs.
-pub trait Cache<K, V>
+pub trait Cache<K, V>: Send + Sync
 where
-    K: Eq + Hash + Clone,
-    V: Clone,
+    K: Eq + Hash + Clone + Send + Sync,
+    V: Clone + Send + Sync,
 {
     /// Get the value for a given key. Return [`None`] if the key is not in the cache.
     fn get(&self, key: &K) -> Option<V>;

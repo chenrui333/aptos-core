@@ -7,11 +7,11 @@ use std::hash::{BuildHasher, Hash};
 
 impl<K, V, We, B, L> Cache<K, V> for S3FIFOCache<K, V, We, B, L>
 where
-    K: Eq + Hash + Clone,
-    V: Clone,
-    We: Weighter<K, V> + Clone,
-    B: BuildHasher + Clone,
-    L: Lifecycle<K, V> + Clone,
+    K: Eq + Hash + Clone + Send + Sync,
+    V: Clone + Send + Sync,
+    We: Weighter<K, V> + Clone + Send + Sync,
+    B: BuildHasher + Clone + Send + Sync,
+    L: Lifecycle<K, V> + Clone + Send + Sync,
 {
     fn get(&self, key: &K) -> Option<V> {
         S3FIFOCache::get(self, key)
