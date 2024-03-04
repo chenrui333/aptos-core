@@ -26,7 +26,8 @@
 //! Precondition: LiveVarAnnotation, LifetimeAnnotation, ExitStateAnnotation
 
 use crate::pipeline::{
-    exit_state_analysis::ExitStateAnnotation, livevar_analysis_processor::LiveVarAnnotation,
+    exit_state_analysis::{ExitState, ExitStateAnnotation},
+    livevar_analysis_processor::LiveVarAnnotation,
     reference_safety_processor::LifetimeAnnotation,
 };
 use abstract_domain_derive::AbstractDomain;
@@ -99,29 +100,6 @@ impl FunctionTargetProcessor for AbilityProcessor {
             lifetime,
             exit_state,
         };
-
-        // Check whether unused parameters may be dropped
-        let live_vars = live_var.get_info_at(0).before_set();
-        if exit_state.get_state_at(0).may_return() {
-            let type_params = fun_env.get_type_parameters();
-            for (i, Parameter(sym, atype, loc)) in fun_env.get_parameters().iter().enumerate() {
-                // If parameter at `i` is not alive and its type is either a type parameter, a struct or a vector of struct
-                // we need to check its drop ability
-                if !live_vars.contains(&i)
-                    && (atype.is_type_parameter() || atype.is_struct_or_vector_of_struct())
-                {
-                    let ability = fun_env.module_env.env.type_abilities(atype, &type_params);
-                    if !ability.has_ability(Ability::Drop) {
-                        let msg = format!(
-                            "Unused parameter `{}` does not have the `drop` ability",
-                            sym.display(fun_env.module_env.env.symbol_pool()),
-                        );
-                        fun_env.module_env.env.diag(Severity::Error, loc, &msg);
-                    }
-                }
-            }
-        }
-
         let state_map = analyzer.analyze_function(CopyDropState::default(), &code, &cfg);
         let copy_drop =
             analyzer.state_per_instruction_with_default(state_map, &code, &cfg, |_, after| {
@@ -135,6 +113,8 @@ impl FunctionTargetProcessor for AbilityProcessor {
             lifetime,
             copy_drop,
         };
+        // Check unused parameters can be safely dropped or not
+        transformer.check_drop_for_params(exit_state.get_state_at(0));
         transformer.run(code);
         transformer.builder.data
     }
@@ -268,6 +248,40 @@ struct Transformer<'a> {
 }
 
 impl<'a> Transformer<'a> {
+    fn check_drop_for_params(&mut self, exit_state_before_execution: &ExitState) {
+        let live_vars = self.live_var.get_info_at(0).before_set();
+        if exit_state_before_execution.may_return() {
+            let type_params = self.builder.fun_env.get_type_parameters();
+            for (i, Parameter(sym, atype, loc)) in
+                self.builder.fun_env.get_parameters().iter().enumerate()
+            {
+                // If parameter at `i` is not alive and its type is either a type parameter, a struct or a vector of struct
+                // we need to check its drop ability
+                if !live_vars.contains(&i)
+                    && (atype.is_type_parameter() || atype.is_struct_or_vector_of_struct())
+                {
+                    let ability = self
+                        .builder
+                        .fun_env
+                        .module_env
+                        .env
+                        .type_abilities(atype, &type_params);
+                    if !ability.has_ability(Ability::Drop) {
+                        let msg = format!(
+                            "Unused parameter `{}` does not have the `drop` ability",
+                            sym.display(self.builder.fun_env.module_env.env.symbol_pool()),
+                        );
+                        self.builder
+                            .fun_env
+                            .module_env
+                            .env
+                            .diag(Severity::Error, loc, &msg);
+                    }
+                }
+            }
+        }
+    }
+
     fn run(&mut self, code: Vec<Bytecode>) {
         for (offset, bc) in code.into_iter().enumerate() {
             self.transform_bytecode(offset as CodeOffset, bc)
