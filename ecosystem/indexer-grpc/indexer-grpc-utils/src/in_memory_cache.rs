@@ -288,7 +288,7 @@ where
     for result in results {
         transactions.extend(result??);
     }
-    let total_size_in_bytes = transactions.iter().map(|t| t.encoded_len() as u64).sum();
+    let total_size_in_bytes: u64 = transactions.iter().map(|t| t.encoded_len() as u64).sum();
     tracing::info!(
         fetching_duration,
         total_size_in_bytes,
