@@ -52,6 +52,8 @@ struct TestConfig {
     dump_for_only_some_stages: Option<Vec<usize>>,
     /// Whether we should run the simplifier
     run_simplifier: bool,
+    /// Whether we should run the aggressive simplifier
+    run_simplifier_with_elimination: bool,
 }
 
 fn path_from_crate_root(path: &str) -> String {
@@ -111,6 +113,22 @@ impl TestConfig {
                 dump_annotated_targets: verbose,
                 dump_for_only_some_stages: None,
                 run_simplifier: true,
+                run_simplifier_with_elimination: false,
+            }
+        } else if path.contains("/simplifier-elimination/") {
+            pipeline.add_processor(Box::new(LiveVarAnalysisProcessor {}));
+            pipeline.add_processor(Box::new(ReferenceSafetyProcessor {}));
+            pipeline.add_processor(Box::new(ExitStateAnalysisProcessor {}));
+            pipeline.add_processor(Box::new(AbilityProcessor {}));
+            Self {
+                stop_before_generating_bytecode: false,
+                dump_ast: true,
+                pipeline,
+                generate_file_format: false,
+                dump_annotated_targets: verbose,
+                dump_for_only_some_stages: None,
+                run_simplifier: true,
+                run_simplifier_with_elimination: true,
             }
         } else if path.contains("/unit_test/") {
             pipeline.add_processor(Box::new(LiveVarAnalysisProcessor {}));
@@ -123,6 +141,7 @@ impl TestConfig {
                 dump_annotated_targets: verbose,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/checking/") || path.contains("/parser/") {
             Self {
@@ -133,6 +152,7 @@ impl TestConfig {
                 dump_annotated_targets: verbose,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/bytecode-generator/") {
             Self {
@@ -143,6 +163,7 @@ impl TestConfig {
                 dump_annotated_targets: true,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/file-format-generator/") {
             pipeline.add_processor(Box::new(LiveVarAnalysisProcessor {}));
@@ -158,6 +179,7 @@ impl TestConfig {
                 dump_annotated_targets: false,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/visibility-checker/") {
             Self {
@@ -168,6 +190,7 @@ impl TestConfig {
                 dump_annotated_targets: verbose,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/live-var/") {
             pipeline.add_processor(Box::new(LiveVarAnalysisProcessor {}));
@@ -179,6 +202,7 @@ impl TestConfig {
                 dump_annotated_targets: true,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/reference-safety/") {
             pipeline.add_processor(Box::new(LiveVarAnalysisProcessor {}));
@@ -191,6 +215,7 @@ impl TestConfig {
                 dump_annotated_targets: verbose,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/abort-analysis/") {
             pipeline.add_processor(Box::new(ExitStateAnalysisProcessor {}));
@@ -202,6 +227,7 @@ impl TestConfig {
                 dump_annotated_targets: true,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/ability-check/") {
             pipeline.add_processor(Box::new(LiveVarAnalysisProcessor {}));
@@ -216,6 +242,7 @@ impl TestConfig {
                 dump_annotated_targets: false,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/ability-transform/") {
             // Difference to above is that we dump targets
@@ -231,6 +258,7 @@ impl TestConfig {
                 dump_annotated_targets: true,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/copy-propagation/") {
             pipeline.add_processor(Box::new(LiveVarAnalysisProcessor {}));
@@ -251,6 +279,7 @@ impl TestConfig {
                 // Only dump with annotations after these pipeline stages.
                 dump_for_only_some_stages: Some(vec![4, 5, 7]),
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/uninit-use-checker/") {
             pipeline.add_processor(Box::new(UninitializedUseChecker {}));
@@ -262,6 +291,7 @@ impl TestConfig {
                 dump_annotated_targets: true,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/unreachable-code-remover/") {
             pipeline.add_processor(Box::new(UnreachableCodeProcessor {}));
@@ -274,6 +304,7 @@ impl TestConfig {
                 dump_annotated_targets: true,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/bytecode-verify-failure/") {
             pipeline.add_processor(Box::new(LiveVarAnalysisProcessor {}));
@@ -288,6 +319,7 @@ impl TestConfig {
                 dump_annotated_targets: false,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else if path.contains("/variable-coalescing/") {
             pipeline.add_processor(Box::new(LiveVarAnalysisProcessor {}));
@@ -300,6 +332,7 @@ impl TestConfig {
                 dump_annotated_targets: true,
                 dump_for_only_some_stages: None,
                 run_simplifier: false,
+                run_simplifier_with_elimination: false,
             }
         } else {
             panic!(
@@ -350,8 +383,8 @@ impl TestConfig {
         }
         if self.run_simplifier {
             if ok {
-                // Run simplifier.  No code elimination for now.
-                ast_simplifier::run_simplifier(&mut env, false);
+                // Run simplifier.  Code elimination only if selected.
+                ast_simplifier::run_simplifier(&mut env, self.run_simplifier_with_elimination);
                 ok = Self::check_diags(&mut test_output.borrow_mut(), &env);
             }
             if ok {
