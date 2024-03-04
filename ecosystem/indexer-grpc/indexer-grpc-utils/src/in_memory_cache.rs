@@ -252,6 +252,7 @@ async fn batch_get_transactions<C>(
 where
     C: redis::aio::ConnectionLike + Send + Sync + Clone + 'static,
 {
+    let start_time = std::time::Instant::now();
     let keys: Vec<String> = versions
         .into_iter()
         .map(|version| CacheEntry::build_key(version, storage_format))
@@ -279,8 +280,14 @@ where
             Ok(transactions)
         }));
     }
+    let task_count = tasks.len();
     // join all.
     let results = futures::future::join_all(tasks).await;
+    tracing::info!(
+        duration_in_seconds = start_time.elapsed().as_secs_f64(),
+        task_count,
+        "In-memory batch get transactions"
+    );
     let mut transactions = Vec::new();
     for result in results {
         transactions.extend(result??);
