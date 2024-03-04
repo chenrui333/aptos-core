@@ -283,15 +283,18 @@ where
     let task_count = tasks.len();
     // join all.
     let results = futures::future::join_all(tasks).await;
-    tracing::info!(
-        duration_in_seconds = start_time.elapsed().as_secs_f64(),
-        task_count,
-        "In-memory batch get transactions"
-    );
+    let fetching_duration = start_time.elapsed().as_secs_f64();
     let mut transactions = Vec::new();
     for result in results {
         transactions.extend(result??);
     }
+    let total_size_in_bytes = transactions.iter().map(|t| t.encoded_len() as u64).sum();
+    tracing::info!(
+        fetching_duration,
+        total_size_in_bytes,
+        task_count,
+        "In-memory batch get transactions"
+    );
     anyhow::Result::Ok(transactions)
 }
 
