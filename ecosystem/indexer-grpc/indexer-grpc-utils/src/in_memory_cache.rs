@@ -215,6 +215,7 @@ async fn create_update_task<C>(
                 cache_processing_duration = cache_processing_start_time.elapsed().as_secs_f64(),
                 "In-memory cache is updated"
             );
+            let start_time = std::time::Instant::now();
             let mut current_cache_metadata = { *cache_metadata.read().await };
             current_cache_metadata.latest_version = end_version;
             current_cache_metadata.total_size_in_bytes += newly_added_bytes;
@@ -231,6 +232,8 @@ async fn create_update_task<C>(
                 current_cache_metadata.first_version += 1;
             }
             *cache_metadata.write().await = current_cache_metadata;
+            let cleanup_duration = start_time.elapsed().as_secs_f64();
+            tracing::info!(cleanup_duration, "In-memory cache cleanup");
         }
     });
 }
