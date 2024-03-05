@@ -1356,10 +1356,10 @@ pub enum Operation {
     SpecFunction(ModuleId, SpecFunId, Option<Vec<MemoryLabel>>),
     Pack(ModuleId, StructId),
     Tuple,
-
-    // Specification specific
     Select(ModuleId, StructId, FieldId),
     UpdateField(ModuleId, StructId, FieldId),
+
+    // Specification specific
     Result(usize),
     Index,
     Slice,
@@ -2098,17 +2098,17 @@ impl Operation {
             SpecFunction(..) => false, // Spec
             Pack(..) => false,         // Could yield an undroppable value
             Tuple => true,
+            Select(..) => false,      // Move-related
+            UpdateField(..) => false, // Move-related
 
             // Specification specific
-            Select(..) => false,      // Spec
-            UpdateField(..) => false, // Spec
-            Result(..) => false,      // Spec
-            Index => false,           // Spec
-            Slice => false,           // Spec
-            Range => false,           // Spec
-            Implies => false,         // Spec
-            Iff => false,             // Spec
-            Identical => false,       // Spec
+            Result(..) => false, // Spec
+            Index => false,      // Spec
+            Slice => false,      // Spec
+            Range => false,      // Spec
+            Implies => false,    // Spec
+            Iff => false,        // Spec
+            Identical => false,  // Spec
 
             // Binary operators
             Add => false, // can overflow
