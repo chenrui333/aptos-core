@@ -102,6 +102,7 @@ impl InMemoryCache {
                 latest_version,
             );
         };
+        let lock_waiting_time = start_time.elapsed().as_secs_f64();
         let mut arc_transactions = Vec::new();
         for key in versions_to_fetch {
             if let Some(transaction) = self.cache.get(&key) {
@@ -111,18 +112,24 @@ impl InMemoryCache {
             }
         }
 
+        let map_lookup_time = start_time.elapsed().as_secs_f64();
+        // Actual clone.
+        let res: Vec<Transaction> = arc_transactions
+            .into_iter()
+            .map(|t| t.as_ref().clone())
+            .collect();
+        let actual_copy_time = start_time.elapsed().as_secs_f64();
         tracing::info!(
-            transactions_count = arc_transactions.len(),
+            transactions_count = res.len(),
             starting_version,
             in_memory_latest_version,
             duration_in_seconds = start_time.elapsed().as_secs_f64(),
+            lock_waiting_time,
+            map_lookup_time,
+            actual_copy_time,
             "In-memory cache lookup",
         );
-        // Actual clone.
-        arc_transactions
-            .into_iter()
-            .map(|t| t.as_ref().clone())
-            .collect()
+        res
     }
 }
 
