@@ -11,8 +11,11 @@ use crate::{
     keyless_validation,
     move_vm_ext::{
         get_max_binary_format_version, get_max_identifier_size,
-        session::respawned_session::RespawnedSession, AptosMoveResolver, MoveVmExt, SessionExt,
-        SessionId,
+        session::{
+            respawned_session::RespawnedSession,
+            user_transaction_sessions::epilogue::EpilogueSession,
+        },
+        AptosMoveResolver, MoveVmExt, SessionExt, SessionId,
     },
     sharded_block_executor::{executor_client::ExecutorClient, ShardedBlockExecutor},
     system_module_names::*,
@@ -586,14 +589,12 @@ impl AptosVM {
             }
 
             let session_id = SessionId::epilogue_meta(txn_data);
-            let mut respawned_session = RespawnedSession::spawn(
-                self,
-                session_id,
-                resolver,
-                change_set,
-                ZERO_STORAGE_REFUND.into(),
-            )?;
-            respawned_session.execute(|session| {
+            let respawned_session =
+                RespawnedSession::spawn(self, session_id, resolver, change_set)?;
+            let mut epilogue_session =
+                EpilogueSession::new(respawned_session, ZERO_STORAGE_REFUND.into());
+
+            epilogue_session.execute(|session| {
                 transaction_validation::run_failure_epilogue(
                     session,
                     gas_meter.balance(),
@@ -603,7 +604,7 @@ impl AptosVM {
                     log_context,
                 )
             })?;
-            respawned_session
+            epilogue_session
                 .finish(change_set_configs)
                 .map(|set| (set, fee_statement, status))
         } else {
@@ -629,7 +630,7 @@ impl AptosVM {
 
     fn success_transaction_cleanup(
         &self,
-        mut respawned_session: RespawnedSession,
+        mut session: EpilogueSession,
         gas_meter: &impl AptosGasMeter,
         txn_data: &TransactionMetadata,
         log_context: &AdapterLogSchema,
@@ -653,9 +654,9 @@ impl AptosVM {
         let fee_statement = AptosVM::fee_statement_from_gas_meter(
             txn_data,
             gas_meter,
-            u64::from(respawned_session.get_storage_fee_refund()),
+            u64::from(session.get_storage_fee_refund()),
         );
-        respawned_session.execute(|session| {
+        session.execute(|session| {
             transaction_validation::run_success_epilogue(
                 session,
                 gas_meter.balance(),
@@ -665,7 +666,7 @@ impl AptosVM {
                 log_context,
             )
         })?;
-        let change_set = respawned_session.finish(change_set_configs)?;
+        let change_set = session.finish(change_set_configs)?;
         let output = VMOutput::new(
             change_set,
             fee_statement,
@@ -821,7 +822,7 @@ impl AptosVM {
             new_published_modules_loaded,
         )?;
 
-        let respawned_session = self.charge_change_set_and_respawn_session(
+        let epilogue_session = self.charge_change_set_and_respawn_session(
             session,
             resolver,
             gas_meter,
@@ -830,7 +831,7 @@ impl AptosVM {
         )?;
 
         self.success_transaction_cleanup(
-            respawned_session,
+            epilogue_session,
             gas_meter,
             txn_data,
             log_context,
@@ -869,14 +870,15 @@ impl AptosVM {
         gas_meter: &mut impl AptosGasMeter,
         change_set_configs: &ChangeSetConfigs,
         txn_data: &TransactionMetadata,
-    ) -> Result<RespawnedSession<'r, 'l>, VMStatus> {
+    ) -> Result<EpilogueSession<'r, 'l>, VMStatus> {
         let mut change_set = session.finish(change_set_configs)?;
         let storage_refund =
             self.charge_change_set(&mut change_set, gas_meter, txn_data, resolver)?;
 
         // TODO[agg_v1](fix): Charge for aggregator writes
         let session_id = SessionId::epilogue_meta(txn_data);
-        RespawnedSession::spawn(self, session_id, resolver, change_set, storage_refund)
+        let respawned_session = RespawnedSession::spawn(self, session_id, resolver, change_set)?;
+        Ok(EpilogueSession::new(respawned_session, storage_refund))
     }
 
     fn simulate_multisig_transaction<'a>(
@@ -909,7 +911,7 @@ impl AptosVM {
                             // A bit tricky since we need to skip success/failure cleanups,
                             // which is in the middle. Introducing a boolean would make the code
                             // messier.
-                            let respawned_session = self.charge_change_set_and_respawn_session(
+                            let epilogue_session = self.charge_change_set_and_respawn_session(
                                 session,
                                 resolver,
                                 gas_meter,
@@ -918,7 +920,7 @@ impl AptosVM {
                             )?;
 
                             self.success_transaction_cleanup(
-                                respawned_session,
+                                epilogue_session,
                                 gas_meter,
                                 txn_data,
                                 log_context,
@@ -1033,7 +1035,7 @@ impl AptosVM {
             MoveValue::Address(txn_payload.multisig_address),
             MoveValue::vector_u8(payload_bytes),
         ]);
-        let respawned_session = if let Err(execution_error) = execution_result {
+        let epilogue_session = if let Err(execution_error) = execution_result {
             // Invalidate the loader cache in case there was a new module loaded from a module
             // publish request that failed.
             // This is redundant with the logic in execute_user_transaction but unfortunately is
@@ -1061,7 +1063,7 @@ impl AptosVM {
 
         // TODO(Gas): Charge for aggregator writes
         self.success_transaction_cleanup(
-            respawned_session,
+            epilogue_session,
             gas_meter,
             txn_data,
             log_context,
@@ -1146,18 +1148,18 @@ impl AptosVM {
         txn_data: &TransactionMetadata,
         cleanup_args: Vec<Vec<u8>>,
         change_set_configs: &ChangeSetConfigs,
-    ) -> Result<RespawnedSession<'r, 'l>, VMStatus> {
+    ) -> Result<EpilogueSession<'r, 'l>, VMStatus> {
         // Charge gas for write set before we do cleanup. This ensures we don't charge gas for
         // cleanup write set changes, which is consistent with outer-level success cleanup
         // flow. We also wouldn't need to worry that we run out of gas when doing cleanup.
-        let mut respawned_session = self.charge_change_set_and_respawn_session(
+        let mut epilogue_session = self.charge_change_set_and_respawn_session(
             session,
             resolver,
             gas_meter,
             change_set_configs,
             txn_data,
         )?;
-        respawned_session.execute(|session| {
+        epilogue_session.execute(|session| {
             session
                 .execute_function_bypass_visibility(
                     &MULTISIG_ACCOUNT_MODULE,
@@ -1168,7 +1170,7 @@ impl AptosVM {
                 )
                 .map_err(|e| e.into_vm_status())
         })?;
-        Ok(respawned_session)
+        Ok(epilogue_session)
     }
 
     fn failure_multisig_payload_cleanup<'r, 'l>(
@@ -1177,16 +1179,16 @@ impl AptosVM {
         execution_error: VMStatus,
         txn_data: &TransactionMetadata,
         mut cleanup_args: Vec<Vec<u8>>,
-    ) -> Result<RespawnedSession<'r, 'l>, VMStatus> {
+    ) -> Result<EpilogueSession<'r, 'l>, VMStatus> {
         // Start a fresh session for running cleanup that does not contain any changes from
         // the inner function call earlier (since it failed).
-        let mut respawned_session = RespawnedSession::spawn(
+        let respawned_session = RespawnedSession::spawn(
             self,
             SessionId::epilogue_meta(txn_data),
             resolver,
             VMChangeSet::empty(),
-            0.into(),
         )?;
+        let mut epilogue_session = EpilogueSession::new(respawned_session, 0.into());
 
         let execution_error = ExecutionError::try_from(execution_error)
             .map_err(|_| VMStatus::error(StatusCode::UNREACHABLE, None))?;
@@ -1196,7 +1198,7 @@ impl AptosVM {
                 .with_message("MultiSig payload cleanup error.".to_string())
                 .finish(Location::Undefined)
         })?);
-        respawned_session.execute(|session| {
+        epilogue_session.execute(|session| {
             session
                 .execute_function_bypass_visibility(
                     &MULTISIG_ACCOUNT_MODULE,
@@ -1207,7 +1209,7 @@ impl AptosVM {
                 )
                 .map_err(|e| e.into_vm_status())
         })?;
-        Ok(respawned_session)
+        Ok(epilogue_session)
     }
 
     /// Execute all module initializers.
