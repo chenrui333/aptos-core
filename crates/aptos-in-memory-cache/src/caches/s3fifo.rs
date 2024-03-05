@@ -20,6 +20,14 @@ where
     fn insert(&mut self, key: K, value: V) {
         S3FIFOCache::insert(self, key, value);
     }
+
+    fn first_key(&self) -> Option<K> {
+        unimplemented!();
+    }
+
+    fn last_key(&self) -> Option<K> {
+        unimplemented!();
+    }
 }
 
 #[cfg(test)]

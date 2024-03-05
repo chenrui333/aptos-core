@@ -16,4 +16,10 @@ where
 
     /// Inserts a given key-value pair in cache. Panics if the insert fails.
     fn insert(&mut self, key: K, value: V);
+
+    /// Returns the first key in the cache. Returns [`None`] if the cache is empty.
+    fn first_key(&self) -> Option<K>;
+
+    /// Returns the last key in the cache. Returns [`None`] if the cache is empty.
+    fn last_key(&self) -> Option<K>;
 }
