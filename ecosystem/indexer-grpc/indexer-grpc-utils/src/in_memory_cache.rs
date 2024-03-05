@@ -172,6 +172,7 @@ async fn create_update_task<C>(
 {
     tokio::spawn(async move {
         let mut conn = conn.clone();
+        let mut current_time = std::time::Instant::now();
         loop {
             let current_latest_version = get_config_by_key(&mut conn, "latest_version")
                 .await
@@ -191,6 +192,7 @@ async fn create_update_task<C>(
                     },
                 }
             }
+            let redis_waiting_duration = current_time.elapsed().as_secs_f64();
             let start_time = std::time::Instant::now();
             let end_version = std::cmp::min(
                 current_latest_version,
@@ -220,6 +222,7 @@ async fn create_update_task<C>(
                 new_in_memory_latest_version = end_version,
                 processing_duration,
                 cache_processing_duration = cache_processing_start_time.elapsed().as_secs_f64(),
+                redis_waiting_duration,
                 "In-memory cache is updated"
             );
             let start_time = std::time::Instant::now();
@@ -241,6 +244,7 @@ async fn create_update_task<C>(
             *cache_metadata.write().await = current_cache_metadata;
             let cleanup_duration = start_time.elapsed().as_secs_f64();
             tracing::info!(cleanup_duration, "In-memory cache cleanup");
+            current_time = std::time::Instant::now();
         }
     });
 }
