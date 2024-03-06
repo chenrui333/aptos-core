@@ -23,13 +23,15 @@
 pub struct Experiment();
 
 impl Experiment {
+    /// The compiler runs a default pipeline of optimizations.
+    /// This flag allows to turn off these optimizations.
+    /// Retention: temporary. To be removed when optimization pipeline "packs" can be
+    /// controlled via configs.
+    pub const NO_OPTIMIZE: &'static str = "no-optimize";
     /// A flag which allows to turn off safety checks, or suppress any error messages
     /// they produce.
     /// Retention: permanent.
     pub const NO_SAFETY: &'static str = "no-safety";
-    /// A flag to turn on optimizations. Currently off by default.
-    /// Retention: temporary (to be removed when optimization is the default)
-    pub const OPTIMIZE: &'static str = "optimize";
     /// A flag which allows to turn on the critical edge splitting pass.
     /// Retention: temporary. This should be removed after the pass can be tested.
     pub const SPLIT_CRITICAL_EDGES: &'static str = "split-critical-edges";

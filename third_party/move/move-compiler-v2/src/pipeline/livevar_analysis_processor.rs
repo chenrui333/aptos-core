@@ -5,9 +5,41 @@
 //! Implements a live-variable analysis processor, annotating lifetime information about locals.
 //! See also https://en.wikipedia.org/wiki/Live-variable_analysis
 //!
+//! Prerequisite annotations: none
+//! Side effect: the `LiveVarAnnotation` will be added to the function target annotations.
+//!
 //! This processor assumes that the CFG of the code has no critical edges.
+//!
+//! Notes on some terminology used in this module:
+//! Primary use of a variable is when there are no other uses intervening between the definition
+//! and the use. Secondary use is when there are intervening uses.
+//!
+//! Some examples:
+//! ```move
+//! 1. let x = 1;
+//! 2. let y = x;
+//! 3. let z = x;
+//!  ```
+//! In the above program, the definition of `x` at line 1 is used at lines 2 and 3.
+//! The use of `x` at line 2 is "primary" (i.e., there is no other use of `x` between
+//! the definition and its use here).
+//! The use of `x` at line 3 is "secondary" (because of the intervening use at line 2).
+//!
+//! Let's take another example:
+//! ```move
+//! 1. let x = 1;
+//! 2. if (p)
+//! 3.   { let y = x; }
+//! 4. else
+//! 5.   { let z = x; }
+//!  ```
+//! In the above example, both uses of `x` at lines 3 and 5 are "primary" uses.
+//!
+//! Tracking only primary uses is less expensive and is better for error reporting purposes
+//! (where the use closest to the definition is the most relevant).
 
 use abstract_domain_derive::AbstractDomain;
+use im::{ordmap::Entry as ImEntry, ordset::OrdSet};
 use itertools::Itertools;
 use move_binary_format::file_format::CodeOffset;
 use move_model::{
@@ -95,15 +127,32 @@ impl LiveVarInfoAtCodeOffset {
 
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd)]
 pub struct LiveVarInfo {
-    /// The usage of a given temporary after this program point, inclusive of locations where
-    /// the usage happens. This set contains at least one element.
-    pub usages: BTreeSet<Loc>,
+    /// The usage of a given temporary after this program point, inclusive of
+    /// (location, code offset) pairs where the usage happens.
+    /// This set contains at least one element.
+    usages: OrdSet<(Loc, CodeOffset)>,
+}
+
+impl LiveVarInfo {
+    /// Return the tracked usage locations of this variable.
+    pub fn usage_locations(&self) -> OrdSet<Loc> {
+        self.usages.iter().map(|(loc, _)| loc.clone()).collect()
+    }
+
+    /// Return the code offsets where this variable is used.
+    pub fn usage_offsets(&self) -> OrdSet<CodeOffset> {
+        self.usages.iter().map(|(_, offset)| *offset).collect()
+    }
 }
 
 // =================================================================================================
 // Processor
 
-pub struct LiveVarAnalysisProcessor {}
+pub struct LiveVarAnalysisProcessor {
+    /// If true, track all usages of a live variable, (i.e., primary and secondary uses).
+    /// If false, track only the primary usages of a live variable.
+    track_all_usages: bool,
+}
 
 impl FunctionTargetProcessor for LiveVarAnalysisProcessor {
     fn process(
@@ -128,6 +177,14 @@ impl FunctionTargetProcessor for LiveVarAnalysisProcessor {
 }
 
 impl LiveVarAnalysisProcessor {
+    /// Create a new instance of live variable analysis.
+    /// `track_all_usages` determines whether both primary and secondary usages of a variable are
+    /// tracked (when true), or only the primary usages (when false).
+    /// Unless all usages are needed, it is recommended to set `track_all_usages` to false.
+    pub fn new(track_all_usages: bool) -> Self {
+        Self { track_all_usages }
+    }
+
     /// Run the live var analysis.
     fn analyze(
         &self,
@@ -137,7 +194,10 @@ impl LiveVarAnalysisProcessor {
         // Perform backward analysis from all blocks just in case some block
         // cannot reach an exit block
         let cfg = StacklessControlFlowGraph::new_backward(code, /*from_all_blocks*/ true);
-        let analyzer = LiveVarAnalysis { func_target };
+        let analyzer = LiveVarAnalysis {
+            func_target,
+            track_all_usages: self.track_all_usages,
+        };
         let state_map = analyzer.analyze_function(
             LiveVarState {
                 livevars: MapDomain::default(),
@@ -213,11 +273,33 @@ struct LiveVarState {
     livevars: MapDomain<TempIndex, LiveVarInfo>,
 }
 
+impl LiveVarState {
+    /// Inserts or updates (by joining with previous information) the livevar info for `t`.
+    fn insert_or_update(&mut self, t: TempIndex, info: LiveVarInfo, track_all_usages: bool) {
+        match self.livevars.entry(t) {
+            ImEntry::Vacant(entry) => {
+                entry.insert(info);
+            },
+            ImEntry::Occupied(mut entry) => {
+                let value = entry.get_mut();
+                if track_all_usages {
+                    value.join(&info);
+                } else {
+                    entry.insert(info); // primary use takes precedence
+                }
+            },
+        }
+    }
+}
+
 impl AbstractDomain for LiveVarInfo {
     fn join(&mut self, other: &Self) -> JoinResult {
-        let count = self.usages.len();
-        self.usages.extend(other.usages.iter().cloned());
-        if self.usages.len() != count {
+        if self.usages.ptr_eq(&other.usages) {
+            return JoinResult::Unchanged;
+        }
+        let old_count = self.usages.len();
+        self.usages = self.usages.clone().union(other.usages.clone());
+        if self.usages.len() != old_count {
             JoinResult::Changed
         } else {
             JoinResult::Unchanged
@@ -227,6 +309,8 @@ impl AbstractDomain for LiveVarInfo {
 
 struct LiveVarAnalysis<'a> {
     func_target: &'a FunctionTarget<'a>,
+    /// See documentation of `LiveVarAnalysisProcessor::track_all_usages`.
+    track_all_usages: bool,
 }
 
 /// Implements the necessary transfer function to instantiate the data flow framework
@@ -235,12 +319,12 @@ impl<'a> TransferFunctions for LiveVarAnalysis<'a> {
 
     const BACKWARD: bool = true;
 
-    fn execute(&self, state: &mut LiveVarState, instr: &Bytecode, _idx: CodeOffset) {
+    fn execute(&self, state: &mut LiveVarState, instr: &Bytecode, offset: CodeOffset) {
         use Bytecode::*;
         match instr {
             Assign(id, dst, src, _) => {
                 state.livevars.remove(dst);
-                state.livevars.insert(*src, self.livevar_info(id));
+                state.insert_or_update(*src, self.livevar_info(id, offset), self.track_all_usages);
             },
             Load(_, dst, _) => {
                 state.livevars.remove(dst);
@@ -250,20 +334,27 @@ impl<'a> TransferFunctions for LiveVarAnalysis<'a> {
                     state.livevars.remove(dst);
                 }
                 for src in srcs {
-                    state.livevars.insert(*src, self.livevar_info(id));
+                    state.insert_or_update(
+                        *src,
+                        self.livevar_info(id, offset),
+                        self.track_all_usages,
+                    );
                 }
             },
             Ret(id, srcs) => {
                 for src in srcs {
-                    state.livevars.insert(*src, self.livevar_info(id));
+                    state.livevars.insert(*src, self.livevar_info(id, offset));
                 }
             },
-            Abort(id, src) | Branch(id, _, _, src) => {
-                state.livevars.insert(*src, self.livevar_info(id));
+            Abort(id, src) => {
+                state.livevars.insert(*src, self.livevar_info(id, offset));
+            },
+            Branch(id, _, _, src) => {
+                state.insert_or_update(*src, self.livevar_info(id, offset), self.track_all_usages);
             },
             Prop(id, _, exp) => {
                 for (idx, _) in exp.used_temporaries(self.func_target.global_env()) {
-                    state.livevars.insert(idx, self.livevar_info(id));
+                    state.livevars.insert(idx, self.livevar_info(id, offset));
                 }
             },
             _ => {},
@@ -275,9 +366,9 @@ impl<'a> TransferFunctions for LiveVarAnalysis<'a> {
 impl<'a> DataflowAnalysis for LiveVarAnalysis<'a> {}
 
 impl<'a> LiveVarAnalysis<'a> {
-    fn livevar_info(&self, id: &AttrId) -> LiveVarInfo {
+    fn livevar_info(&self, id: &AttrId, offset: CodeOffset) -> LiveVarInfo {
         LiveVarInfo {
-            usages: once(self.func_target.get_bytecode_loc(*id)).collect(),
+            usages: once((self.func_target.get_bytecode_loc(*id), offset)).collect(),
         }
     }
 }
