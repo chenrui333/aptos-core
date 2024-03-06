@@ -1,33 +1,22 @@
 // Copyright © Aptos Foundation
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::move_vm_ext::session::respawned_session::RespawnedSession;
+use crate::move_vm_ext::session::respawnable_session::RespawnableSession;
 use aptos_gas_algebra::Fee;
 use aptos_vm_types::{change_set::VMChangeSet, storage::change_set_configs::ChangeSetConfigs};
+use derive_more::{Deref, DerefMut};
 use move_core_types::vm_status::{err_msg, StatusCode, VMStatus};
-use std::ops::{Deref, DerefMut};
 
+#[derive(Deref, DerefMut)]
 pub struct EpilogueSession<'r, 'l> {
-    session: RespawnedSession<'r, 'l>,
+    #[deref]
+    #[deref_mut]
+    session: RespawnableSession<'r, 'l>,
     storage_refund: Fee,
 }
 
-impl<'r, 'l> Deref for EpilogueSession<'r, 'l> {
-    type Target = RespawnedSession<'r, 'l>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.session
-    }
-}
-
-impl<'r, 'l> DerefMut for EpilogueSession<'r, 'l> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.session
-    }
-}
-
 impl<'r, 'l> EpilogueSession<'r, 'l> {
-    pub fn new(session: RespawnedSession<'r, 'l>, storage_refund: Fee) -> Self {
+    pub fn new(session: RespawnableSession<'r, 'l>, storage_refund: Fee) -> Self {
         Self {
             session,
             storage_refund,
@@ -52,8 +41,7 @@ impl<'r, 'l> EpilogueSession<'r, 'l> {
             ));
         }
 
-        let (_vm, executor_view) = session.unpack();
-        let mut change_set = executor_view.change_set;
+        let mut change_set = session.unpack().change_set;
         change_set
             .squash_additional_change_set(additional_change_set, change_set_configs)
             .map_err(|_err| {

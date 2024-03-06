@@ -31,7 +31,7 @@ use std::{
     sync::Arc,
 };
 
-pub mod respawned_session;
+pub mod respawnable_session;
 pub mod session_id;
 pub(crate) mod user_transaction_sessions;
 pub mod view_with_change_set;
